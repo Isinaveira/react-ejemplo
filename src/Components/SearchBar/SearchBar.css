@@ -1,0 +1,16 @@
+.search-bar {
+    width: 100%;
+    height: 50px;
+    font-size: 26px;
+    background-color: #b6b6b6;
+    border-radius: 10px;
+    border: none;
+    padding: 10px;
+    color: black;
+    box-sizing: border-box;
+}
+
+.search-bar::placeholder{
+    color: white;
+    padding: 10px;
+}

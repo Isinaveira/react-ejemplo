@@ -1,102 +1,199 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import "./Pokedex.css";
 import SearchBar from "../Components/SearchBar/SearchBar";
-import apiClient from "../services/apiClient";
-
-// Tipo de dato PokemonList (es la lista que esperamos obetener y con la que voy a trabajar)
-interface PokemonList {
-  count: number;
-  next: string;
-  previous: null;
-  results: Pokemon[];
-}
-
-export interface Pokemon {
-  name: string;
-  url: string;
-  imagen?: string;
-}
+import { usePokemonData } from "../hooks/usePokemonData"; // Importa el custom hook
+import pokemonTypes from "../utils/pokemonTypes";
 
 function Pokedex() {
-  //states
+  // Usamos el custom hook para obtener todos los Pokémon
+  const { allPokemons, loading, error } = usePokemonData();
 
-  // Lista de pokemons ya con las imágenes
-  const [myPokedexList, setMyPokedexList] = useState<Pokemon[]>([]);
+  // Estados para búsqueda y filtrado
+  const [searchTerm, setSearchTerm] = useState<string>("");
+  const [filterType, setFilterType] = useState<string>("");
 
-  // Estado para la lista filtrada que se mostrará, inicialmente es la lista completa
-  const [filteredItems, setFilteredItems] = useState<Pokemon[]>([]);
+  // Estados para la paginación local
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pokemonsPerPage] = useState(15); // La cantidad de Pokémon por página
 
+  // Pokémon filtrados y/o buscados (aplicado sobre allPokemons)
+  const filteredAndSearchedPokemons = useMemo(() => {
+    let currentPokemons = allPokemons;
+
+    // 1. Filtrar por tipo
+    if (filterType) {
+      currentPokemons = currentPokemons.filter((pokemon) =>
+        pokemon.types?.includes(filterType)
+      );
+    }
+
+    // 2. Buscar por nombre
+    if (searchTerm.trim().length > 0) {
+      const lowerCaseSearchTerm = searchTerm.toLowerCase();
+      currentPokemons = currentPokemons.filter((pokemon) =>
+        pokemon.name.toLowerCase().includes(lowerCaseSearchTerm)
+      );
+    }
+
+    return currentPokemons;
+  }, [allPokemons, searchTerm, filterType]);
+
+  // Lógica de paginación para la lista filtrada/buscada
+  const indexOfLastPokemon = currentPage * pokemonsPerPage;
+  const indexOfFirstPokemon = indexOfLastPokemon - pokemonsPerPage;
+  const currentPokemonsToDisplay = filteredAndSearchedPokemons.slice(
+    indexOfFirstPokemon,
+    indexOfLastPokemon
+  );
+
+  const totalPages = Math.ceil(
+    filteredAndSearchedPokemons.length / pokemonsPerPage
+  );
+
+  // Reiniciar la paginación cuando cambian los filtros/búsqueda
   useEffect(() => {
-    const fetchPokemons = async () => {
-      try {
-        // 1. Obtener la lista de nombres y URLs de los Pokémon
-        const response = await apiClient.get<PokemonList>("/pokemon", {
-          params: {
-            limit: 10000,
-          },
-        });
+    setCurrentPage(1);
+  }, [searchTerm, filterType]);
 
-        // 2. Crear un array de promesas para obtener los detalles de cada Pokémon
-        const pokemonPromises = response.data.results.map(
-          async (pokemon: Pokemon) => {
-            const idPokemon = pokemon.url.split("/")[6];
-            try {
-              // Obtener los detalles y la imagen de cada Pokémon
-              const pokemon_info = await apiClient.get<any>(
-                `/pokemon/${idPokemon}`
-              );
-              const imagen = pokemon_info.data.sprites.front_default;
-
-              // Retornar el objeto Pokémon con su imagen
-              return { ...pokemon, imagen: imagen };
-            } catch (error) {
-              console.error(`Error fetching data for ${pokemon.name}:`, error);
-              // En caso de error, retornamos el Pokémon sin imagen para evitar fallos
-              return { ...pokemon, imagen: null };
-            }
-          }
-        );
-
-        // 3. Esperar a que todas las promesas se resuelvan con Promise.all
-        const pokemonListWithImages = await Promise.all(pokemonPromises);
-
-        // 4. Actualizar el estado con la lista completa y corregida
-        setMyPokedexList(pokemonListWithImages);
-        setFilteredItems(pokemonListWithImages);
-      } catch (error) {
-        console.error("Error al obtener la lista principal de Pokémon:", error);
-      }
-    };
-
-    fetchPokemons();
-  }, []);
-
-  //functions & handlers & hooks
-  const handleFilter = (filteredItems: Pokemon[]) => {
-    setFilteredItems(filteredItems);
+  const handleSearch = (term: string) => {
+    setSearchTerm(term);
   };
 
+  const handleTypeFilter = (type: string) => {
+    setFilterType(type);
+    // No reseteamos el searchTerm aquí, permitimos que se combine el filtro con la búsqueda
+  };
+
+  const handleReset = () => {
+    setSearchTerm("");
+    setFilterType("");
+  };
+
+  const handleNextPage = () => {
+    if (currentPage < totalPages) {
+      setCurrentPage((prevPage) => prevPage + 1);
+    }
+  };
+
+  const handlePrevPage = () => {
+    if (currentPage > 1) {
+      setCurrentPage((prevPage) => prevPage - 1);
+    }
+  };
+
+  // Renderizado de estado de carga
+  if (loading) {
+    return (
+      <div className="container loading-container">
+        <p>Cargando todos los Pokémon...</p>
+      </div>
+    );
+  }
+
+  // Renderizado de error
+  if (error) {
+    return (
+      <div className="container error-container">
+        <p className="error-message">{error}</p>
+      </div>
+    );
+  }
 
   return (
-    <>
-      <h1>Lista de Pokemons</h1>
-      <SearchBar list={myPokedexList} onFilter={handleFilter}  />
+    <div className="container">
+      <h1>Lista de Pokémon</h1>
+      <SearchBar onSearch={handleSearch} onReset={handleReset} />
+
+      {/* Selector de tipo para filtrar */}
+      <div className="type-filter">
+        <label htmlFor="type-select">Filtrar por tipo:</label>
+        <select
+          id="type-select"
+          onChange={(e) => handleTypeFilter(e.target.value)}
+          value={filterType}
+        >
+          <option value="">Todos los tipos</option>
+          {Object.keys(pokemonTypes).map((type) => (
+            <option key={type} value={type}>
+              {type.charAt(0).toUpperCase() + type.slice(1)}
+            </option>
+          ))}
+        </select>
+      </div>
+
       <div className="list">
         <ul>
-          {filteredItems?.map((pokemon, index) => (
-            <li key={index}>
-              <div className="pokemon-container">
-                <img
-                  src={pokemon.imagen}
-                  alt={`Aquí va la imagen del pokemon ${pokemon.name}`}
-                />
-                <h2>{pokemon.name}</h2>
-              </div>
-            </li>
-          ))}
+          {currentPokemonsToDisplay.length > 0 ? (
+            currentPokemonsToDisplay.map((pokemon, index) => (
+              <li key={pokemon.name + index}>
+                <div className="pokemon-container">
+                  <img
+                    className="pokemon-image"
+                    src={
+                      pokemon.imagen ||
+                      "https://placehold.co/96x96/E0E0E0/FFFFFF?text=No+Img"
+                    }
+                    alt={`Imagen de ${pokemon.name}`}
+                  />
+                  <div className="pokemon-types">
+                    {pokemon.types?.map((type, typeIndex) => {
+                      const typeData = pokemonTypes[type];
+                      if (typeData?.url && typeData?.color) {
+                        return (
+                          <span
+                            key={typeIndex}
+                            className="type-pill"
+                            style={{
+                              color: typeData.color,
+                              border: `solid 1px ${typeData.color}`,
+                              borderRadius: "15px",
+                              padding: "2px",
+                              minWidth: "70px",
+                            }}
+                          >
+                            <img
+                              src={typeData.url}
+                              width="20px"
+                              height="20px"
+                              alt={type}
+                              title={type}
+                              className="type-icon"
+                            />
+                            <span className="type-name capitalize">
+                              {type}
+                            </span>
+                          </span>
+                        );
+                      }
+                      return null;
+                    })}
+                  </div>
+                  <h2>{pokemon.name}</h2>
+                </div>
+              </li>
+            ))
+          ) : (
+            <p>No se encontraron Pokémon que coincidan con los criterios.</p>
+          )}
         </ul>
       </div>
-    </>
+
+      {/* Paginación */}
+      <div className="pagination">
+        <button onClick={handlePrevPage} disabled={currentPage === 1}>
+          Anterior
+        </button>
+        <h3>
+          Página {currentPage} de {totalPages}
+        </h3>
+        <button
+          onClick={handleNextPage}
+          disabled={currentPage === totalPages || totalPages === 0}
+        >
+          Siguiente
+        </button>
+      </div>
+    </div>
   );
 }
 

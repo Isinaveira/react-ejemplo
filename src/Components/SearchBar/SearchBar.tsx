@@ -1,42 +1,49 @@
 import { useEffect, useState } from "react";
-import type { Pokemon } from "../../Pages/Pokedex";
+import "./SearchBar.css";
+
 interface SearchBarProps {
-  list: Pokemon[];
-  onFilter: (filteredItems: Pokemon[]) => void;
+  onSearch: (searchTerm: string) => void;
+  onReset: () => void;  // corregido, función sin parámetros
 }
 
-function SearchBar({ list, onFilter }: SearchBarProps) {
+function SearchBar({ onSearch, onReset }: SearchBarProps) {
   const [searchTerm, setSearchTerm] = useState("");
 
-  const handleInputChange = (event) => {
-    setSearchTerm(event.target.value);
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const term = e.target.value;
+    setSearchTerm(term);
+    onSearch(term);
+    if (term.trim() === "") {
+      onReset();
+    }
+  };
+
+  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    onSearch(searchTerm.trim());
   };
 
   useEffect(() => {
-    if (searchTerm === "") {
-      onFilter(list);
-      return;
-    }
+    const handler = setTimeout(() => {
+      onSearch(searchTerm.trim());
+    }, 500);
 
-    const filteredItems = list.filter((item) =>
-      item.name.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-
-    onFilter(filteredItems);
-  }, [searchTerm, list, onFilter]);
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [searchTerm, onSearch]);
 
   return (
-    <>
-      <div className="search-bar">
-        <input
-          type="text"
-          name="searchBar"
-          value={searchTerm}
-          placeholder="Busca el pokemon por su nombre"
-          onChange={handleInputChange}
-        />
-      </div>
-    </>
+    <form onSubmit={handleSubmit}>
+      <input
+        type="text"
+        name="searchBar"
+        className="search-bar"
+        value={searchTerm}
+        placeholder="Busca el Pokémon por su nombre"
+        onChange={handleChange}
+      />
+    </form>
   );
 }
 
